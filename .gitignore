@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# SwiftPM / Xcode build output
+.build/
+.swiftpm/
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Editor-local settings
+.vscode/
+.idea/
+
+# Design screenshots stay local
+docs/design/jettison_screenshot/
+!docs/design/
+!docs/design/*.md
