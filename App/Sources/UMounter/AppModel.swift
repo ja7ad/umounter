@@ -17,6 +17,7 @@ final class AppModel {
     private let power: PowerMonitor
     private let hotkeys = HotkeyCenter()
     private let feedback: Feedback
+    private(set) var progressHUD: ProgressHUD?
     private let log = Logger(subsystem: "app.umounter", category: "app")
 
     init() {
@@ -41,6 +42,7 @@ final class AppModel {
         imageAutoEject.start()
         idleAutoEject.onIdleEjected = { [weak self] device, mode in self?.feedback.idleEjected(device, mode: mode) }
         idleAutoEject.start()
+        progressHUD = ProgressHUD(store: store, settings: settings)
         feedback.onRemountRequested = { [weak self] in self?.remount() }
     }
 

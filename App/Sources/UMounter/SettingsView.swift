@@ -272,6 +272,10 @@ struct NotificationsPane: View {
 
     var body: some View {
         Form {
+            Section("Progress window") {
+                Toggle("While ejecting", isOn: $settings.showProgressWhileEjecting)
+                Toggle("While remounting", isOn: $settings.showProgressWhileRemounting)
+            }
             Section("Notifications") {
                 Toggle("Notify after ejecting and remounting", isOn: $settings.notifyAfterOperations)
             }

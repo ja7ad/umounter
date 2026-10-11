@@ -53,6 +53,34 @@ public struct Device: Identifiable, Hashable, Sendable {
         isNetwork ? .volume(volumes.first?.volumePath ?? .init(filePath: id)) : .bsdName(id)
     }
 
+    /// Human-readable kind for messages: "USB drive", "SD card", "disk image"…
+    public var kindDescription: String {
+        switch category {
+        case .network: "network drive"
+        case .diskImage: "disk image"
+        case .optical: "disc"
+        case .sdCard: "SD card"
+        case .hardDisk: Self.hardDiskDescription(protocol: deviceProtocol)
+        }
+    }
+
+    /// The same, for a single disk/volume (uses its own protocol and flags).
+    public static func kindDescription(for disk: DiskInfo) -> String {
+        if disk.isNetwork { return "network drive" }
+        if disk.diskImageURL != nil || disk.kind == .diskImage { return "disk image" }
+        if disk.isOptical { return "disc" }
+        if disk.deviceProtocol == "Secure Digital" { return "SD card" }
+        return hardDiskDescription(protocol: disk.deviceProtocol)
+    }
+
+    private static func hardDiskDescription(protocol: String?) -> String {
+        switch `protocol` {
+        case "USB": "USB drive"
+        case "Thunderbolt", "PCI-Express": "external drive"
+        default: "hard drive"
+        }
+    }
+
     /// Rule IDs of the device's volumes (see `DiskInfo.ruleID`).
     public var ruleIDs: Set<String> { Set(volumes.compactMap(\.ruleID)) }
 }

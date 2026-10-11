@@ -543,3 +543,47 @@ private func isolatedDefaults() -> UserDefaults {
         #expect(never.entries.isEmpty)
     }
 }
+
+// MARK: - Progress
+
+@MainActor
+@Suite struct ProgressTests {
+    @Test func kindDescriptions() {
+        func device(_ category: DiskCategory, _ proto: String?) -> Device {
+            Device(id: "d", name: "D", volumes: [], isNetwork: category == .network, category: category, deviceProtocol: proto)
+        }
+        #expect(device(.hardDisk, "USB").kindDescription == "USB drive")
+        #expect(device(.hardDisk, "Thunderbolt").kindDescription == "external drive")
+        #expect(device(.hardDisk, "SATA").kindDescription == "hard drive")
+        #expect(device(.sdCard, "Secure Digital").kindDescription == "SD card")
+        #expect(device(.diskImage, "Virtual Interface").kindDescription == "disk image")
+        #expect(device(.network, nil).kindDescription == "network drive")
+        #expect(device(.optical, "ATAPI").kindDescription == "disc")
+    }
+
+    @Test func messages() {
+        let usb = DiskOperation(kind: .eject, deviceName: "JAVAD", deviceKind: "USB drive")
+        let card = DiskOperation(kind: .unmount, deviceName: "Card", deviceKind: "SD card")
+        let mount = DiskOperation(kind: .mount, deviceName: "Backup", deviceKind: "hard drive")
+        #expect(DiskOperation.progressMessage(for: [usb], showEjecting: true, showMounting: false) == "Ejecting “JAVAD” (USB drive)…")
+        #expect(DiskOperation.progressMessage(for: [card], showEjecting: true, showMounting: false) == "Unmounting “Card” (SD card)…")
+        #expect(DiskOperation.progressMessage(for: [usb, card], showEjecting: true, showMounting: false) == "Unmounting 2 disks: Card, JAVAD…")
+        #expect(DiskOperation.progressMessage(for: [mount], showEjecting: true, showMounting: false) == nil, "remount progress is opt-in")
+        #expect(DiskOperation.progressMessage(for: [mount], showEjecting: false, showMounting: true) == "Mounting “Backup” (hard drive)…")
+        #expect(DiskOperation.progressMessage(for: [usb], showEjecting: false, showMounting: true) == nil)
+    }
+
+    @Test func storeReportsOperationWhileEjecting() async throws {
+        let service = FakeDiskService([whole("disk6"), volume("disk6s1", root: "disk6", name: "JAVAD")])
+        service.ejectDelay = .milliseconds(200)
+        let store = DiskStore(service: service)
+        await store.refresh()
+        let device = try #require(store.devices.first)
+        let task = Task { await store.eject(device, mode: .eject) }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(store.activeOperations["disk6"] == DiskOperation(kind: .eject, deviceName: "JAVAD", deviceKind: "USB drive"))
+        #expect(store.statusIconState == .working)
+        _ = await task.value
+        #expect(store.activeOperations.isEmpty)
+    }
+}

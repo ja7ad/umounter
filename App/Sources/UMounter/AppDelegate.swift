@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         #if DEBUG
         DebugSnapshots.runIfRequested(model: model)
+        // `UMOUNTER_DEBUG_HUD="Ejecting …"`: show the progress HUD with that text.
+        if let text = ProcessInfo.processInfo.environment["UMOUNTER_DEBUG_HUD"] {
+            model.progressHUD?.debugShow(text)
+        }
         // `UMOUNTER_DEBUG_EJECT=disk6`: eject that device at launch, as the menu would.
         if let id = ProcessInfo.processInfo.environment["UMOUNTER_DEBUG_EJECT"] {
             Task { @MainActor in

@@ -82,6 +82,8 @@ public final class AppSettings {
     public var idleEjectCategories: Set<DiskCategory> { didSet { saveCodable(idleEjectCategories, Key.idleEjectCategories) } }
 
     // Notifications
+    public var showProgressWhileEjecting: Bool { didSet { save(showProgressWhileEjecting, Key.showProgressWhileEjecting) } }
+    public var showProgressWhileRemounting: Bool { didSet { save(showProgressWhileRemounting, Key.showProgressWhileRemounting) } }
     public var notifyAfterOperations: Bool { didSet { save(notifyAfterOperations, Key.notifyAfterOperations) } }
     public var playSuccessSound: Bool { didSet { save(playSuccessSound, Key.playSuccessSound) } }
     public var successSound: String { didSet { save(successSound, Key.successSound) } }
@@ -131,6 +133,8 @@ public final class AppSettings {
         idleEjectEnabled = bool(Key.idleEjectEnabled, false)
         idleEjectSeconds = defaults.object(forKey: Key.idleEjectSeconds) as? Int ?? 300
         idleEjectCategories = decode(Key.idleEjectCategories, [.sdCard, .hardDisk])
+        showProgressWhileEjecting = bool(Key.showProgressWhileEjecting, true)
+        showProgressWhileRemounting = bool(Key.showProgressWhileRemounting, false)
         notifyAfterOperations = bool(Key.notifyAfterOperations, true)
         playSuccessSound = bool(Key.playSuccessSound, true)
         successSound = defaults.string(forKey: Key.successSound) ?? "Glass"
@@ -168,6 +172,8 @@ public final class AppSettings {
         static let idleEjectEnabled = "idleEjectEnabled"
         static let idleEjectSeconds = "idleEjectSeconds"
         static let idleEjectCategories = "idleEjectCategories"
+        static let showProgressWhileEjecting = "showProgressWhileEjecting"
+        static let showProgressWhileRemounting = "showProgressWhileRemounting"
         static let notifyAfterOperations = "notifyAfterOperations"
         static let playSuccessSound = "playSuccessSound"
         static let successSound = "successSound"

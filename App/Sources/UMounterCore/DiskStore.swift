@@ -14,6 +14,39 @@ public struct OperationFailure: Identifiable, Sendable {
     public var blockers: [Blocker]
 }
 
+/// An operation in flight on one device, for progress UI.
+public struct DiskOperation: Equatable, Sendable {
+    public enum Kind: Equatable, Sendable {
+        case eject, unmount, mount
+    }
+
+    public var kind: Kind
+    public var deviceName: String
+    /// "USB drive", "SD card", "disk image"… (see `Device.kindDescription`).
+    public var deviceKind: String
+
+    public init(kind: Kind, deviceName: String, deviceKind: String) {
+        self.kind = kind
+        self.deviceName = deviceName
+        self.deviceKind = deviceKind
+    }
+
+    /// Progress text such as `Ejecting “JAVAD” (USB drive)…`, or nil when no
+    /// operation the user wants to see is running.
+    public static func progressMessage(for operations: [DiskOperation], showEjecting: Bool, showMounting: Bool) -> String? {
+        let visible = operations.filter { $0.kind == .mount ? showMounting : showEjecting }
+            .sorted { $0.deviceName.localizedStandardCompare($1.deviceName) == .orderedAscending }
+        guard let first = visible.first else { return nil }
+        let verb = switch first.kind {
+        case .eject: "Ejecting"
+        case .unmount: "Unmounting"
+        case .mount: "Mounting"
+        }
+        if visible.count == 1 { return "\(verb) “\(first.deviceName)” (\(first.deviceKind))…" }
+        return "\(verb) \(visible.count) disks: " + visible.map(\.deviceName).joined(separator: ", ") + "…"
+    }
+}
+
 /// The menu bar icon's state, ordered by priority.
 public enum StatusIconState: Equatable, Sendable {
     /// An eject, park or mount is running.
@@ -38,8 +71,11 @@ public final class DiskStore {
     public private(set) var mountableVolumes: [DiskInfo] = []
     /// Devices UMounter unmounted (parked) that are still attached and can be remounted.
     public private(set) var parkedDeviceIDs: Set<String> = []
+    /// Operations in flight, by device ID (drives the progress HUD).
+    public private(set) var activeOperations: [String: DiskOperation] = [:]
+
     /// Devices with an operation in flight.
-    public private(set) var busyDeviceIDs: Set<String> = []
+    public var busyDeviceIDs: Set<String> { Set(activeOperations.keys) }
 
     /// Which devices "Eject All" and automatic ejection act on.
     public var filter: EjectFilter = .all {
@@ -110,8 +146,11 @@ public final class DiskStore {
 
     @discardableResult
     public func eject(_ device: Device, mode: EjectMode) async -> OperationFailure? {
-        guard busyDeviceIDs.insert(device.id).inserted else { return nil }
-        defer { busyDeviceIDs.remove(device.id) }
+        guard activeOperations[device.id] == nil else { return nil }
+        activeOperations[device.id] = DiskOperation(
+            kind: mode == .park ? .unmount : .eject, deviceName: device.name, deviceKind: device.kindDescription
+        )
+        defer { activeOperations[device.id] = nil }
 
         do {
             try await service.ejectSafely(device.target, mode: mode)
@@ -128,6 +167,11 @@ public final class DiskStore {
 
     @discardableResult
     public func mount(_ volume: DiskInfo) async -> OperationFailure? {
+        let id = volume.id
+        activeOperations[id] = DiskOperation(
+            kind: .mount, deviceName: volume.volumeName ?? id, deviceKind: Device.kindDescription(for: volume)
+        )
+        defer { activeOperations[id] = nil }
         do {
             try await service.mount(DiskTarget(volume), whole: false, readOnly: false)
             await refresh()
@@ -145,6 +189,12 @@ public final class DiskStore {
         for id in parkedDeviceIDs.sorted() {
             let volumeIDs = Set(mountableVolumes.filter { $0.physicalRootBSDName == id }.compactMap(\.ruleID))
             if !volumeIDs.isEmpty && volumeIDs.isSubset(of: neverRemount) { continue }
+            let names = mountableVolumes.filter { $0.physicalRootBSDName == id }.compactMap(\.volumeName)
+            activeOperations[id] = DiskOperation(
+                kind: .mount, deviceName: names.isEmpty ? id : names.joined(separator: ", "),
+                deviceKind: disks.first { $0.bsdName == id }.map(Device.kindDescription(for:)) ?? "disk"
+            )
+            defer { activeOperations[id] = nil }
             do {
                 try await service.mountVolumes(onDevice: id, readOnly: false)
                 parkedDeviceIDs.remove(id)
