@@ -12,6 +12,13 @@ public struct OperationFailure: Identifiable, Sendable {
     public var message: String
     /// Processes holding files open on the device (filled for "in use" errors).
     public var blockers: [Blocker]
+
+    public init(deviceID: String?, deviceName: String, message: String, blockers: [Blocker]) {
+        self.deviceID = deviceID
+        self.deviceName = deviceName
+        self.message = message
+        self.blockers = blockers
+    }
 }
 
 /// An operation in flight on one device, for progress UI.
@@ -135,7 +142,11 @@ public final class DiskStore {
     @discardableResult
     public func ejectAll(mode: EjectMode) async -> [OperationFailure] {
         await withTaskGroup(of: OperationFailure?.self) { group in
-            for device in ejectAllDevices {
+            // Images stored on another device in the set are ejected by that device's
+            // eject (inner first), so only the outermost devices run in parallel.
+            let targets = ejectAllDevices
+            let nested = Set(targets.flatMap { DiskCatalog.nestedImages(of: $0, in: targets).map(\.id) })
+            for device in targets where !nested.contains(device.id) {
                 group.addTask { await self.eject(device, mode: mode) }
             }
             var failures: [OperationFailure] = []
@@ -151,6 +162,18 @@ public final class DiskStore {
             kind: mode == .park ? .unmount : .eject, deviceName: device.name, deviceKind: device.kindDescription
         )
         defer { activeOperations[device.id] = nil }
+
+        // Inner ejection: disk images stored on this device go first, recursively.
+        // Always a full eject — an image that is only unmounted keeps its file open.
+        for inner in DiskCatalog.nestedImages(of: device, in: devices) {
+            if let failure = await eject(inner, mode: .eject) {
+                return OperationFailure(
+                    deviceID: device.id, deviceName: device.name,
+                    message: "The disk image “\(inner.name)” is stored on “\(device.name)” and couldn’t be ejected first. \(failure.message)",
+                    blockers: failure.blockers
+                )
+            }
+        }
 
         do {
             try await service.ejectSafely(device.target, mode: mode)
@@ -253,10 +276,20 @@ public final class DiskStore {
     }
 
     private func failure(for device: Device, error: Error) async -> OperationFailure {
-        var blockers: [Blocker] = []
-        if let diskError = error as? DiskError, diskError.code == .busy {
-            blockers = await self.blockers(of: device, includeFiles: true)
+        guard let diskError = error as? DiskError, diskError.code == .busy else {
+            return OperationFailure(deviceID: device.id, deviceName: device.name, message: "\(error)", blockers: [])
         }
-        return OperationFailure(deviceID: device.id, deviceName: device.name, message: "\(error)", blockers: blockers)
+        let blockers = await self.blockers(of: device, includeFiles: true)
+        let message: String
+        if let inner = DiskCatalog.nestedImages(of: device, in: devices).first {
+            message = "The disk image “\(inner.name)” is stored on it and still mounted. Eject that image first."
+        } else if blockers.isEmpty {
+            // Root-owned processes (Spotlight, the disk-image service, backupd) are
+            // invisible without privileges.
+            message = "It is in use by a system process, such as Spotlight indexing or a Time Machine backup. Try again in a moment."
+        } else {
+            message = "It is in use."
+        }
+        return OperationFailure(deviceID: device.id, deviceName: device.name, message: message, blockers: blockers)
     }
 }

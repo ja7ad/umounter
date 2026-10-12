@@ -1,4 +1,5 @@
 import AppKit
+import UMounterCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -17,6 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `UMOUNTER_DEBUG_HUD="Ejecting …"`: show the progress HUD with that text.
         if let text = ProcessInfo.processInfo.environment["UMOUNTER_DEBUG_HUD"] {
             model.progressHUD?.debugShow(text)
+        }
+        // `UMOUNTER_DEBUG_ALERT=1`: show a failure alert (measuring its memory cost).
+        if ProcessInfo.processInfo.environment["UMOUNTER_DEBUG_ALERT"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                FailureAlert.present([OperationFailure(deviceID: nil, deviceName: "Test", message: "It is in use.", blockers: [])])
+            }
         }
         // `UMOUNTER_DEBUG_EJECT=disk6`: eject that device at launch, as the menu would.
         if let id = ProcessInfo.processInfo.environment["UMOUNTER_DEBUG_EJECT"] {

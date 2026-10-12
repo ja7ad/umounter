@@ -168,6 +168,18 @@ public enum DiskCatalog {
         return .hardDisk
     }
 
+    /// Disk images whose backing file lives on one of `device`'s mounted volumes
+    /// (direct children only). They must be ejected before `device` can be: the
+    /// disk-image service keeps their files open.
+    public static func nestedImages(of device: Device, in devices: [Device]) -> [Device] {
+        let mountPoints = device.volumes.compactMap { $0.volumePath?.path }.map { $0.hasSuffix("/") ? $0 : $0 + "/" }
+        guard !mountPoints.isEmpty else { return [] }
+        return devices.filter { other in
+            guard other.id != device.id, let path = other.diskImageURL?.path else { return false }
+            return mountPoints.contains { path.hasPrefix($0) }
+        }
+    }
+
     /// External volumes that have a file system but are not mounted.
     public static func mountableVolumes(from disks: [DiskInfo]) -> [DiskInfo] {
         disks

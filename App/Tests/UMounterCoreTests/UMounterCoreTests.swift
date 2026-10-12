@@ -47,6 +47,14 @@ private final class FakeDiskService: DiskService, @unchecked Sendable {
                 state.removeAll { $0.volumePath == url }
             case .bsdName(let root):
                 if busyRoots.contains(root) { throw DiskError(code: .busy, operation: "unmount \(root)") }
+                // Like the real disk-image service: an attached image whose file lives
+                // on this device keeps it busy.
+                let mountPoints = state.filter { $0.physicalRootBSDName == root }.compactMap { $0.volumePath?.path }
+                if state.contains(where: { disk in
+                    disk.physicalRootBSDName != root && mountPoints.contains { disk.diskImageURL?.path.hasPrefix($0 + "/") == true }
+                }) {
+                    throw DiskError(code: .busy, operation: "unmount \(root)")
+                }
                 if mode == .eject {
                     state.removeAll { $0.physicalRootBSDName == root }
                 } else {
@@ -585,5 +593,74 @@ private func isolatedDefaults() -> UserDefaults {
         #expect(store.statusIconState == .working)
         _ = await task.value
         #expect(store.activeOperations.isEmpty)
+    }
+}
+
+// MARK: - Inner (nested image) ejection
+
+@MainActor
+@Suite struct NestedEjectTests {
+    /// disk5's .dmg lives on disk4's volume, as with the Jettison ISO on macOS 27.
+    private var disks: [DiskInfo] {
+        let iso = URL(filePath: "/Users/me/Downloads/Outer.iso")
+        let dmg = URL(filePath: "/Volumes/Outer/Manual install/Inner.dmg")
+        return [
+            DiskInfo(bsdName: "disk4", kind: .diskImage, isWhole: true, physicalRootBSDName: "disk4", diskImageURL: iso),
+            DiskInfo(bsdName: "disk4s1", kind: .volume, volumeName: "Outer", volumePath: URL(filePath: "/Volumes/Outer"),
+                     volumeKind: "cd9660", physicalRootBSDName: "disk4", diskImageURL: iso),
+            DiskInfo(bsdName: "disk5", kind: .diskImage, isWhole: true, physicalRootBSDName: "disk5", diskImageURL: dmg),
+            DiskInfo(bsdName: "disk5s1", kind: .volume, volumeName: "Inner", volumePath: URL(filePath: "/Volumes/Inner"),
+                     volumeKind: "hfs", physicalRootBSDName: "disk5", diskImageURL: dmg),
+        ]
+    }
+
+    @Test func findsNestedImages() async {
+        let store = DiskStore(service: FakeDiskService(disks))
+        await store.refresh()
+        let outer = store.devices.first { $0.id == "disk4" }!
+        #expect(DiskCatalog.nestedImages(of: outer, in: store.devices).map(\.id) == ["disk5"])
+        #expect(DiskCatalog.nestedImages(of: store.devices.first { $0.id == "disk5" }!, in: store.devices).isEmpty)
+    }
+
+    @Test func ejectingTheHostEjectsTheInnerImageFirst() async throws {
+        let store = DiskStore(service: FakeDiskService(disks))
+        await store.refresh()
+        let outer = try #require(store.devices.first { $0.id == "disk4" })
+        #expect(await store.eject(outer, mode: .park) == nil)
+        #expect(store.devices.isEmpty)
+        #expect(store.parkedDeviceIDs == ["disk4"], "the inner image was ejected, not parked")
+    }
+
+    @Test func ejectAllOrdersByDependency() async {
+        let store = DiskStore(service: FakeDiskService(disks))
+        await store.refresh()
+        #expect(await store.ejectAll(mode: .eject).isEmpty)
+        #expect(store.devices.isEmpty)
+    }
+
+    @Test func innerFailureExplainsWhy() async throws {
+        let service = FakeDiskService(disks)
+        service.busyRoots = ["disk5"]
+        service.volumesInUse = [URL(filePath: "/Volumes/Inner")]
+        let store = DiskStore(service: service)
+        await store.refresh()
+        let outer = try #require(store.devices.first { $0.id == "disk4" })
+        let failure = try #require(await store.eject(outer, mode: .eject))
+        #expect(failure.deviceID == "disk4", "retrying retries the host, which retries the inner image")
+        #expect(failure.message.contains("“Inner” is stored on “Outer”"))
+        #expect(failure.blockers.map(\.name) == ["Preview"])
+        #expect(store.devices.count == 2)
+    }
+
+    @Test func hiddenBlockerGetsAFriendlyMessage() async throws {
+        let service = FakeDiskService([whole("disk6"), volume("disk6s1", root: "disk6", name: "JAVAD")])
+        service.busyRoots = ["disk6"]
+        service.volumesInUse = []
+        let store = DiskStore(service: service)
+        await store.refresh()
+        let device = try #require(store.devices.first)
+        let failure = try #require(await store.eject(device, mode: .eject))
+        #expect(failure.blockers.isEmpty)
+        #expect(failure.message.contains("system process"))
     }
 }

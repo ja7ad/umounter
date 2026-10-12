@@ -124,12 +124,15 @@ final class AppModel {
 
     private var inUseWindow: InUseWindowController?
 
-    /// Sound/notification, then the right failure UI: the in-use window (with Quit
-    /// buttons) for disks held by processes, an alert for everything else.
+    /// Sound/notification, then the failure UI: the in-use window for eject
+    /// failures, an alert for the rest.
     private func report(_ operation: Feedback.Operation, deviceNames: [String], failures: [OperationFailure]) {
         feedback.finished(operation, deviceNames: deviceNames, failures: failures)
-        let busy = failures.filter { $0.deviceID != nil && !$0.blockers.isEmpty }
-        log.info("\(failures.count) failure(s), \(busy.count) held by processes: \(busy.flatMap(\.blockers).map(\.name), privacy: .public)")
+        // Every eject failure goes to the in-use window (with Quit buttons when processes
+        // are visible, and Try Again either way): it costs ~3 MB vs ~9 MB for NSAlert,
+        // and that memory is not returned. Only failures without a device (mount) alert.
+        let busy = failures.filter { $0.deviceID != nil }
+        log.info("\(failures.count) failure(s); blockers: \(busy.flatMap(\.blockers).map(\.name), privacy: .public)")
         FailureAlert.present(failures.filter { failure in !busy.contains { $0.id == failure.id } })
         guard !busy.isEmpty else { return }
         if inUseWindow == nil {

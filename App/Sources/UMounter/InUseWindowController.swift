@@ -43,7 +43,7 @@ final class InUseWindowController: NSWindowController, NSWindowDelegate {
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 200),
             styleMask: [.titled, .closable], backing: .buffered, defer: true
         )
-        window.title = "Disk in Use"
+        window.title = "Couldn’t Eject"
         window.isReleasedWhenClosed = false
         // A menu bar app can't take focus while the user works elsewhere (cooperative
         // activation), so the prompt floats above other apps' windows instead.
@@ -190,7 +190,7 @@ final class InUseWindowController: NSWindowController, NSWindowDelegate {
                 title.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
                 content.addArrangedSubview(title)
             }
-            if item.blockers.isEmpty {
+            if item.blockers.isEmpty, items.count > 1 || retrying.contains(item.deviceID) {
                 let text = retrying.contains(item.deviceID) ? "Ejecting…" : item.message
                 content.addArrangedSubview(secondaryLabel(text))
             }
@@ -215,11 +215,14 @@ final class InUseWindowController: NSWindowController, NSWindowDelegate {
         icon.symbolConfiguration = .init(pointSize: 30, weight: .regular)
         icon.contentTintColor = .systemOrange
 
+        let hasBlockers = items.contains { !$0.blockers.isEmpty }
         let title = NSTextField(labelWithString: items.count == 1
             ? "“\(items[0].deviceName)” can’t be ejected yet"
             : "\(items.count) disks can’t be ejected yet")
         title.font = .boldSystemFont(ofSize: 15)
-        let subtitle = secondaryLabel("These processes are using it. Quit them and UMounter ejects it automatically — nothing is force-unmounted.")
+        let subtitle = secondaryLabel(hasBlockers
+            ? "These processes are using it. Quit them and UMounter ejects it automatically — nothing is force-unmounted."
+            : items.count == 1 ? items[0].message : "Nothing is force-unmounted. Try again in a moment.")
         subtitle.preferredMaxLayoutWidth = 410
 
         let texts = NSStackView(views: [title, subtitle])
@@ -286,6 +289,7 @@ final class InUseWindowController: NSWindowController, NSWindowDelegate {
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         let quitAll = NSButton(title: "Quit All", target: self, action: #selector(quitAll))
         quitAll.isEnabled = items.flatMap(\.blockers).contains(where: canQuit)
+        quitAll.isHidden = items.allSatisfy(\.blockers.isEmpty)
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancel))
         cancel.keyEquivalent = "\u{1b}"
         let again = NSButton(title: "Try Again", target: self, action: #selector(tryAgain))

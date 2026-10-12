@@ -19,6 +19,7 @@ BIN_DIR=$(swift build --package-path "$ROOT/App" -c "$CONFIG" --show-bin-path)
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/UMounter" "$APP/Contents/MacOS/UMounter"
+cp "$ROOT/App/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"   # regenerate: swift scripts/make-icon.swift
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -30,6 +31,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key>        <string>UMounter</string>
     <key>CFBundleExecutable</key>         <string>UMounter</string>
     <key>CFBundlePackageType</key>        <string>APPL</string>
+    <key>CFBundleIconFile</key>           <string>AppIcon</string>
     <key>CFBundleShortVersionString</key> <string>$VERSION</string>
     <key>CFBundleVersion</key>            <string>$BUILD</string>
     <key>LSMinimumSystemVersion</key>     <string>14.0</string>
