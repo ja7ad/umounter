@@ -28,6 +28,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     // MARK: - Icon
 
+    /// How long the "safe to unplug" checkmark stays after an eject before the icon
+    /// returns to normal. Parked disks stay attached, so a lasting checkmark would
+    /// look like a stuck state.
+    static let safeConfirmationDuration: Duration = .seconds(4)
+
+    private var current: (state: StatusIconState, style: MenuBarIconStyle, showCount: Bool) = (.empty, .eject, true)
+    private var safeConfirmationEnded = false
+    private var safeConfirmationTask: Task<Void, Never>?
+
     private func observeIcon() {
         let (state, style, showCount, visible) = withObservationTracking {
             (model.store.statusIconState, model.settings.menuBarIconStyle, model.settings.showDiskCount, model.settings.showMenuBarIcon)
@@ -35,10 +44,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             Task { @MainActor in self?.observeIcon() }
         }
         statusItem.isVisible = visible
+
+        if state == .safeToUnplug, current.state != .safeToUnplug {
+            // Entering "safe to unplug": show the checkmark briefly, then the normal icon.
+            safeConfirmationEnded = false
+            safeConfirmationTask?.cancel()
+            safeConfirmationTask = Task { [weak self] in
+                try? await Task.sleep(for: Self.safeConfirmationDuration)
+                guard !Task.isCancelled, let self else { return }
+                self.safeConfirmationEnded = true
+                self.render()
+            }
+        } else if state != .safeToUnplug {
+            safeConfirmationTask?.cancel()
+            safeConfirmationTask = nil
+        }
+        current = (state, style, showCount)
+        render()
+    }
+
+    private func render() {
         guard let button = statusItem.button else { return }
-        button.image = MenuBarIcon.image(for: state, style: style, showCount: showCount)
-        button.setAccessibilityLabel(Self.accessibilityText(state))
-        button.toolTip = Self.accessibilityText(state)
+        let state = current.state == .safeToUnplug && safeConfirmationEnded ? .empty : current.state
+        button.image = MenuBarIcon.image(for: state, style: current.style, showCount: current.showCount)
+        let text = current.state == .safeToUnplug ? "UMounter — disks unmounted, safe to unplug" : Self.accessibilityText(state)
+        button.setAccessibilityLabel(text)
+        button.toolTip = text
     }
 
     private static func accessibilityText(_ state: StatusIconState) -> String {
