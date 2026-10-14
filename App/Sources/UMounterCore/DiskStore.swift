@@ -96,6 +96,13 @@ public final class DiskStore {
 
     public var canRemount: Bool { !parkedDeviceIDs.isEmpty }
 
+    /// Restores parked devices saved by a previous process (memory-reclaim relaunch).
+    /// Devices that were unplugged or remounted meanwhile are dropped on the next refresh.
+    public func restoreParkedDevices(_ ids: Set<String>) {
+        parkedDeviceIDs = ids
+        apply(disks)
+    }
+
     /// What the menu bar icon should say at a glance.
     public var statusIconState: StatusIconState {
         if !busyDeviceIDs.isEmpty { return .working }
@@ -248,6 +255,8 @@ public final class DiskStore {
         devices = DiskCatalog.devices(from: snapshot, alsoEject: filter.alsoEject)
         mountableVolumes = DiskCatalog.mountableVolumes(from: snapshot)
         // Forget parked devices that were unplugged or got mounted by someone else.
+        // (Skipped before the first snapshot, so restored IDs survive until then.)
+        guard !snapshot.isEmpty else { return }
         let stillParked = Set(mountableVolumes.compactMap(\.physicalRootBSDName))
         parkedDeviceIDs.formIntersection(stillParked)
     }

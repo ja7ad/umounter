@@ -5,6 +5,7 @@ import UMounterCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel?
     private var statusItem: StatusItemController?
+    private let launchDate = Date()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = AppModel()
@@ -45,6 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Launching UMounter again (Finder, Spotlight) opens Settings — the way back
     /// when the menu bar icon is hidden.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // A memory-reclaim restart can race LaunchServices into sending a reopen
+        // event; opening Settings then would undo the point of restarting.
+        if MemoryReclaimer.isReclaimRelaunch, Date().timeIntervalSince(launchDate) < 5 { return true }
         model?.showSettings()
         return true
     }

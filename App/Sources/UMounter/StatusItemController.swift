@@ -83,6 +83,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     // MARK: - Menu (built on open, discarded on the next open)
 
+    func menuWillOpen(_ menu: NSMenu) {
+        model.isMenuOpen = true
+        model.memoryReclaimer.activityStarted()
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let store = model.store
@@ -130,6 +135,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     /// Frees the per-open menu (items, closures, images) once it closes.
     func menuDidClose(_ menu: NSMenu) {
+        model.isMenuOpen = false
+        model.memoryReclaimer.activityEnded()
         DispatchQueue.main.async { menu.removeAllItems() }
     }
 

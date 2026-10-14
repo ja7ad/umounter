@@ -45,6 +45,7 @@ final class InUseWindowController: NSWindowController, NSWindowDelegate {
         )
         window.title = "Couldn’t Eject"
         window.isReleasedWhenClosed = false
+        window.isRestorable = false
         // A menu bar app can't take focus while the user works elsewhere (cooperative
         // activation), so the prompt floats above other apps' windows instead.
         window.level = .floating

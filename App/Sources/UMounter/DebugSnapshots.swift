@@ -7,14 +7,8 @@ import SwiftUI
 /// or when the display is unavailable.
 @MainActor
 enum DebugSnapshots {
-    /// This process's physical footprint, as `footprint`/Activity Monitor report it.
     static func physicalFootprint() -> String {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-        let kr = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
-        }
-        return kr == KERN_SUCCESS ? String(format: "%.1f MB", Double(info.phys_footprint) / 1_048_576) : "?"
+        String(format: "%.1f MB", Double(MemoryReclaimer.physicalFootprint()) / 1_048_576)
     }
 
     /// `UMOUNTER_DEBUG_EJECT_LOOP=/path/test.dmg`: attach and eject that image 6 times,

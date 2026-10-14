@@ -44,6 +44,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.toolbarStyle = .preference
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("UMounterSettings")
+        window.isRestorable = false // never reopened by window restoration (e.g. after a memory-reclaim restart)
         self.init(window: window)
         window.delegate = self
     }
@@ -104,6 +105,30 @@ struct GeneralPane: View {
                     Text("Open UMounter again from Finder or Spotlight to get back to Settings.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+            }
+
+            Section {
+                Toggle("Reduce background activity in Low Power Mode", isOn: $settings.reduceActivityInLowPowerMode)
+                if model.powerState.isLowPowerMode {
+                    Label(settings.reduceActivityInLowPowerMode ? "Low Power Mode is on — idle-disk checks are paused." : "Low Power Mode is on — all features keep running.",
+                          systemImage: "leaf.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Energy")
+            } footer: {
+                Text("When macOS Low Power Mode is on, UMounter pauses its only periodic work — checking whether disks are idle. Ejecting, sleep handling, hotkeys and disk-image timeouts keep working. Turn this off to keep every feature running in Low Power Mode.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Keep memory low", isOn: $settings.keepMemoryLow)
+            } header: {
+                Text("Memory")
+            } footer: {
+                Text("macOS keeps frameworks loaded once a window or menu has been used. When UMounter has been idle for 2 minutes and uses more than 30 MB, it restarts itself in the background to go back to about 13 MB. The menu bar icon blinks briefly.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section {

@@ -664,3 +664,41 @@ private func isolatedDefaults() -> UserDefaults {
         #expect(failure.message.contains("system process"))
     }
 }
+
+// MARK: - Low Power Mode
+
+@MainActor
+@Suite struct LowPowerModeTests {
+    @Test func idleSamplingPausesInLowPowerModeUnlessAllowed() async {
+        let service = FakeDiskService([whole("disk6"), volume("disk6s1", root: "disk6", name: "JAVAD")])
+        service.volumesInUse = []
+        let store = DiskStore(service: service)
+        await store.refresh()
+        let settings = AppSettings(defaults: isolatedDefaults())
+        settings.idleEjectEnabled = true
+        let power = SystemPowerState(isLowPowerMode: false)
+        let ejector = IdleDiskAutoEjector(store: store, settings: settings, power: power)
+
+        ejector.syncEntries()
+        #expect(ejector.entries.count == 1)
+
+        power.isLowPowerMode = true
+        ejector.syncEntries()
+        #expect(ejector.entries.isEmpty, "no sampling in Low Power Mode by default")
+        #expect(ejector.isPausedForLowPower)
+
+        settings.reduceActivityInLowPowerMode = false
+        ejector.syncEntries()
+        #expect(ejector.entries.count == 1, "the user allowed full functionality")
+    }
+
+    @Test func settingPersists() {
+        let defaults = isolatedDefaults()
+        let settings = AppSettings(defaults: defaults)
+        #expect(settings.reduceActivityInLowPowerMode && settings.keepMemoryLow)
+        settings.reduceActivityInLowPowerMode = false
+        settings.keepMemoryLow = false
+        let reloaded = AppSettings(defaults: defaults)
+        #expect(!reloaded.reduceActivityInLowPowerMode && !reloaded.keepMemoryLow)
+    }
+}

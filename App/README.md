@@ -49,7 +49,18 @@ What changed:
 - **Settings window on demand.** It is created when opened and released on close. `heap` confirms that no window, hosting controller or view graph objects remain.
 - **Notifications on demand.** `UNUserNotificationCenter` (an XPC connection plus framework state) is connected only before the first notification, when auto-eject is on, or when the app was launched from a notification.
 
-Known limit: once Settings has been opened, the footprint stays about 18 MB higher until relaunch. SwiftUI keeps internal caches, and the freed pages are fragmented (`malloc_zone_pressure_relief` returns 0 bytes). The only full fix is to host Settings in a separate process.
+Why memory grows with use: the first use of each piece of UI loads frameworks. Measured costs are about 7 MB for the menu, 18 MB for Settings, 3 MB for the Couldn't Eject window, and about 9 MB for an `NSAlert`. macOS never unloads frameworks from a running process. This is not a leak: repeated ejects stay flat at about 15.5 MB (`UMOUNTER_DEBUG_EJECT_LOOP`).
+
+**Memory reclaim (`MemoryReclaimer`, Settings → General → "Keep memory low", on by default).** UMounter restarts itself in the background when all of these hold:
+- it has been idle for 2 minutes (no window, menu closed, no operation, not handling sleep);
+- its footprint is above 30 MB;
+- its footprint is at least 12 MB above its settled launch footprint (the lower of the samples at 3 s and 15 s), which prevents restart loops.
+
+Parked disks are saved and restored, so Remount keeps working. The new process starts with a clean environment and with window restoration off. Measured: 33 MB with Settings open, then 13 MB after the restart. The countdown is armed only when activity ends, so there is no polling.
+
+## Energy
+
+`SystemPowerState` follows macOS Low Power Mode (`ProcessInfo.isLowPowerModeEnabled` and `NSProcessInfoPowerStateDidChange`). With Settings → General → "Reduce background activity in Low Power Mode" on (the default), the only periodic work, idle-disk I/O sampling, pauses while Low Power Mode is on. Everything else is event-driven and keeps working. Turn the setting off to keep all features running in Low Power Mode.
 
 How to measure:
 
@@ -59,6 +70,7 @@ top -l 4 -s 15 -pid $(pgrep -x UMounter) -stats pid,cpu,mem,idlew,threads
 UMOUNTER_DEBUG_SETTINGS_CYCLE=1 .build/debug/UMounter   # opens Settings at 5 s and closes it at 10 s; run footprint around that
 UMOUNTER_DEBUG_DUMP_MENU=1 .build/debug/UMounter        # prints the menu as built on open
 UMOUNTER_DEBUG_EJECT=disk6 .build/debug/UMounter        # ejects that device at launch (exercises the in-use window)
+UMOUNTER_DEBUG_RECLAIM_DELAY=5                          # memory-reclaim idle delay in seconds (default 120)
 ```
 
 The debug build reads its preferences from the `UMounter` domain, so `defaults write UMounter …` can set test values without touching the real app (`app.umounter.UMounter`).

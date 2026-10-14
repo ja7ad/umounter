@@ -27,6 +27,7 @@ public final class IdleDiskAutoEjector {
     @ObservationIgnored private(set) var entries: [String: Entry] = [:]
     @ObservationIgnored private let store: DiskStore
     @ObservationIgnored private let settings: AppSettings
+    @ObservationIgnored private let power: SystemPowerState
     @ObservationIgnored private let clock: any Clock<Duration>
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var samplingTask: Task<Void, Never>?
@@ -34,11 +35,12 @@ public final class IdleDiskAutoEjector {
     @ObservationIgnored private let log = Logger(subsystem: "app.umounter", category: "idle-eject")
 
     public init(
-        store: DiskStore, settings: AppSettings,
+        store: DiskStore, settings: AppSettings, power: SystemPowerState = SystemPowerState(),
         clock: any Clock<Duration> = ContinuousClock(), now: @escaping () -> Date = Date.init
     ) {
         self.store = store
         self.settings = settings
+        self.power = power
         self.clock = clock
         self.now = now
     }
@@ -50,8 +52,14 @@ public final class IdleDiskAutoEjector {
     /// Samples often enough to notice idleness within ~1/6 of the timeout.
     var sampleInterval: TimeInterval { min(max(timeout / 6, 5), 30) }
 
+    /// True while sampling is paused for Low Power Mode.
+    public var isPausedForLowPower: Bool {
+        settings.reduceActivityInLowPowerMode && power.isLowPowerMode
+    }
+
     func eligibleDevices() -> [Device] {
-        guard settings.idleEjectEnabled else { return [] }
+        // The only feature that samples: paused in Low Power Mode unless the user allows it.
+        guard settings.idleEjectEnabled, !isPausedForLowPower else { return [] }
         let neverEject = Set(settings.neverEject.map(\.id))
         return store.devices.filter { device in
             guard !device.isNetwork, device.category != .diskImage, device.category != .optical else { return false }
@@ -68,6 +76,8 @@ public final class IdleDiskAutoEjector {
             _ = settings.idleEjectSeconds
             _ = settings.idleEjectCategories
             _ = settings.neverEject
+            _ = settings.reduceActivityInLowPowerMode
+            _ = power.isLowPowerMode
         } onChange: { [weak self] in
             Task { @MainActor in self?.observe() }
         }

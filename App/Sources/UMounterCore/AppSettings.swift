@@ -58,6 +58,11 @@ public final class AppSettings {
     // General
     public var showMenuBarIcon: Bool { didSet { save(showMenuBarIcon, Key.showMenuBarIcon) } }
     public var showDiskCount: Bool { didSet { save(showDiskCount, Key.showDiskCount) } }
+    /// Restart quietly in the background when idle and memory has grown (see MemoryReclaimer).
+    /// Pause background work (idle-disk sampling) while macOS Low Power Mode is on.
+    /// Off = keep every feature running in Low Power Mode.
+    public var reduceActivityInLowPowerMode: Bool { didSet { save(reduceActivityInLowPowerMode, Key.reduceActivityInLowPowerMode) } }
+    public var keepMemoryLow: Bool { didSet { save(keepMemoryLow, Key.keepMemoryLow) } }
     public var menuBarIconStyle: MenuBarIconStyle { didSet { save(menuBarIconStyle.rawValue, Key.menuBarIconStyle) } }
     public var ejectBeforeSleep: Bool { didSet { save(ejectBeforeSleep, Key.ejectBeforeSleep) } }
     public var ejectAfterDisplayOff: Bool { didSet { save(ejectAfterDisplayOff, Key.ejectAfterDisplayOff) } }
@@ -118,6 +123,8 @@ public final class AppSettings {
         // Defaults follow Jettison's out-of-the-box behaviour.
         showMenuBarIcon = bool(Key.showMenuBarIcon, true)
         showDiskCount = bool(Key.showDiskCount, true)
+        keepMemoryLow = bool(Key.keepMemoryLow, true)
+        reduceActivityInLowPowerMode = bool(Key.reduceActivityInLowPowerMode, true)
         menuBarIconStyle = defaults.string(forKey: Key.menuBarIconStyle).flatMap(MenuBarIconStyle.init) ?? .eject
         ejectBeforeSleep = bool(Key.ejectBeforeSleep, true)
         ejectAfterDisplayOff = bool(Key.ejectAfterDisplayOff, false)
@@ -158,6 +165,8 @@ public final class AppSettings {
         static let showMenuBarIcon = "showMenuBarIcon"
         static let showDiskCount = "showDiskCount"
         static let menuBarIconStyle = "menuBarIconStyle"
+        static let keepMemoryLow = "keepMemoryLow"
+        static let reduceActivityInLowPowerMode = "reduceActivityInLowPowerMode"
         static let ejectBeforeSleep = "ejectBeforeSleep"
         static let ejectAfterDisplayOff = "ejectAfterDisplayOff"
         static let ejectBeforeLogout = "ejectBeforeLogout"

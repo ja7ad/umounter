@@ -10,6 +10,9 @@ final class AppModel {
     let settings: AppSettings
     let store: DiskStore
     let automation: AutomationController
+    /// macOS Low Power Mode, kept current from ProcessInfo notifications.
+    let powerState = SystemPowerState(isLowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled)
+    private var powerObserver: NSObjectProtocol?
     let imageAutoEject: ImageAutoEjectScheduler
     let idleAutoEject: IdleDiskAutoEjector
     let hotkeyRecorder: HotkeyRecorderModel
@@ -18,6 +21,9 @@ final class AppModel {
     private let hotkeys = HotkeyCenter()
     private let feedback: Feedback
     private(set) var progressHUD: ProgressHUD?
+    let memoryReclaimer = MemoryReclaimer()
+    /// Set by `StatusItemController` while the menu is open.
+    var isMenuOpen = false
     private let log = Logger(subsystem: "app.umounter", category: "app")
 
     init() {
@@ -32,17 +38,40 @@ final class AppModel {
         feedback = Feedback(settings: settings)
         hotkeyRecorder = HotkeyRecorderModel(settings: settings)
         imageAutoEject = ImageAutoEjectScheduler(store: store, settings: settings)
-        idleAutoEject = IdleDiskAutoEjector(store: store, settings: settings)
+        idleAutoEject = IdleDiskAutoEjector(store: store, settings: settings, power: powerState)
 
         hotkeys.onAction = { [weak self] action in self?.perform(action) }
         syncSettings()
         store.start()
         power.start()
-        imageAutoEject.onAutoEjected = { [weak self] device in self?.feedback.autoEjected(device) }
+        imageAutoEject.onAutoEjected = { [weak self] device in
+            self?.feedback.autoEjected(device)
+            self?.memoryReclaimer.activityEnded()
+        }
         imageAutoEject.start()
-        idleAutoEject.onIdleEjected = { [weak self] device, mode in self?.feedback.idleEjected(device, mode: mode) }
+        idleAutoEject.onIdleEjected = { [weak self] device, mode in
+            self?.feedback.idleEjected(device, mode: mode)
+            self?.memoryReclaimer.activityEnded()
+        }
         idleAutoEject.start()
         progressHUD = ProgressHUD(store: store, settings: settings)
+
+        powerObserver = NotificationCenter.default.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.powerState.isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled }
+        }
+
+        let restored = MemoryReclaimer.takeSavedParkedDevices()
+        if !restored.isEmpty { log.info("restored \(restored.count) parked device(s) after a memory-reclaim restart") }
+        store.restoreParkedDevices(restored)
+        memoryReclaimer.isEnabled = { [weak self] in self?.settings.keepMemoryLow ?? false }
+        memoryReclaimer.parkedDeviceIDs = { [weak self] in self?.store.parkedDeviceIDs ?? [] }
+        memoryReclaimer.isQuiescent = { [weak self] in
+            guard let self else { return false }
+            return settingsWindow == nil && inUseWindow == nil && !isMenuOpen
+                && store.activeOperations.isEmpty && !automation.parkedForSleep
+        }
         feedback.onRemountRequested = { [weak self] in self?.remount() }
     }
 
@@ -54,6 +83,7 @@ final class AppModel {
 
     /// Opens Settings, building the window on demand.
     func showSettings() {
+        memoryReclaimer.activityStarted()
         if settingsWindow == nil {
             let controller = SettingsWindowController(model: self)
             controller.onClose = { [weak self] in self?.settingsWindowClosed() }
@@ -65,6 +95,7 @@ final class AppModel {
     private func settingsWindowClosed() {
         hotkeyRecorder.cancel()
         settingsWindow = nil
+        memoryReclaimer.activityEnded()
         // Note: the SwiftUI pages freed here are fragmented, so the footprint stays
         // ~18 MB higher until relaunch (measured; malloc_zone_pressure_relief frees 0).
     }
@@ -128,6 +159,7 @@ final class AppModel {
     /// failures, an alert for the rest.
     private func report(_ operation: Feedback.Operation, deviceNames: [String], failures: [OperationFailure]) {
         feedback.finished(operation, deviceNames: deviceNames, failures: failures)
+        memoryReclaimer.activityEnded()
         // Every eject failure goes to the in-use window (with Quit buttons when processes
         // are visible, and Try Again either way): it costs ~3 MB vs ~9 MB for NSAlert,
         // and that memory is not returned. Only failures without a device (mount) alert.
@@ -140,7 +172,10 @@ final class AppModel {
                 retry: { [weak self] id in await self?.retryEject(id) },
                 onEjected: { [weak self] names in self?.feedback.finished(.eject, deviceNames: names, failures: []) }
             )
-            controller.onClose = { [weak self] in self?.inUseWindow = nil }
+            controller.onClose = { [weak self] in
+                self?.inUseWindow = nil
+                self?.memoryReclaimer.activityEnded()
+            }
             inUseWindow = controller
         }
         inUseWindow?.show(busy)
