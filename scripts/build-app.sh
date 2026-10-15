@@ -4,6 +4,7 @@
 #   scripts/build-app.sh            # release build → App/build/UMounter.app
 #   CONFIG=debug scripts/build-app.sh
 #   SIGN_IDENTITY="Developer ID Application: …" scripts/build-app.sh
+#   UNIVERSAL=1 scripts/build-app.sh   # arm64 + x86_64
 set -euo pipefail
 
 ROOT=${0:A:h:h}
@@ -12,9 +13,14 @@ SIGN_IDENTITY=${SIGN_IDENTITY:--}   # "-" = ad-hoc
 APP="$ROOT/App/build/UMounter.app"
 VERSION=${VERSION:-0.1.0}
 BUILD=${BUILD:-$(date +%Y%m%d%H%M)}
+ARCH_FLAGS=()
+[[ -n ${UNIVERSAL:-} ]] && ARCH_FLAGS=(--arch arm64 --arch x86_64)
+# Notarization needs a secure timestamp; ad-hoc signatures can't have one.
+TIMESTAMP_FLAG=--timestamp=none
+[[ $SIGN_IDENTITY != "-" ]] && TIMESTAMP_FLAG=--timestamp
 
-swift build --package-path "$ROOT/App" -c "$CONFIG" --product UMounter
-BIN_DIR=$(swift build --package-path "$ROOT/App" -c "$CONFIG" --show-bin-path)
+swift build --package-path "$ROOT/App" -c "$CONFIG" --product UMounter "${ARCH_FLAGS[@]}"
+BIN_DIR=$(swift build --package-path "$ROOT/App" -c "$CONFIG" "${ARCH_FLAGS[@]}" --show-bin-path)
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -37,10 +43,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key>     <string>14.0</string>
     <key>LSUIElement</key>                <true/>
     <key>LSApplicationCategoryType</key>  <string>public.app-category.utilities</string>
-    <key>NSHumanReadableCopyright</key>   <string>© 2026 UMounter</string>
+    <key>NSHumanReadableCopyright</key>   <string>© 2026 Javad</string>
 </dict>
 </plist>
 PLIST
 
-codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" "$APP"
+codesign --force --options runtime $TIMESTAMP_FLAG --sign "$SIGN_IDENTITY" "$APP"
 echo "Built $APP"
