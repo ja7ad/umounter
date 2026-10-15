@@ -43,6 +43,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
+    /// On logout, restart or shutdown, keep the process alive until the disks are
+    /// ejected (`sessionWillEnd` enforces its own deadline), then let it quit.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model, model.isSessionEnding, model.settings.ejectBeforeLogout else { return .terminateNow }
+        Task { @MainActor in
+            await model.automation.sessionWillEnd()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     /// Launching UMounter again (Finder, Spotlight) opens Settings — the way back
     /// when the menu bar icon is hidden.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

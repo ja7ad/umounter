@@ -82,6 +82,9 @@ final class AppModel {
     private var settingsWindow: SettingsWindowController?
 
     /// Opens Settings, building the window on demand.
+    /// Logout, restart or shutdown is in progress (see `PowerMonitor`).
+    var isSessionEnding: Bool { power.isSessionEnding }
+
     func showSettings() {
         memoryReclaimer.activityStarted()
         if settingsWindow == nil {

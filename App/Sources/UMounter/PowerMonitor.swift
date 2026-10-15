@@ -8,7 +8,11 @@ import UMounterCore
 /// - Sleep: `IORegisterForSystemPower`. On `SystemWillSleep` we eject first and only
 ///   then call `IOAllowPowerChange`, so macOS waits for us (up to ~30 s; the
 ///   controller enforces a 25 s deadline).
-/// - Display off / on, logout: `NSWorkspace` notifications.
+/// - Display off / on: `NSWorkspace` notifications.
+/// - Logout / restart / shutdown: only recorded here. Ejecting from the
+///   `willPowerOff` notification is too late to finish — AppKit terminates the app
+///   right after posting it — so `AppDelegate` holds termination with
+///   `.terminateLater` and ejects from `applicationShouldTerminate`.
 /// - Remount happens on *screens did wake* (a user is present), never on a dark wake.
 @MainActor
 final class PowerMonitor {
@@ -17,6 +21,24 @@ final class PowerMonitor {
     private var notifyPort: IONotificationPortRef?
     private var notifier: io_object_t = 0
     private var observers: [NSObjectProtocol] = []
+    private var powerOffDate: Date?
+
+    /// True while a logout, restart or shutdown is under way. Expires, because a
+    /// cancelled logout sends no notification and a later quit (e.g. a memory-reclaim
+    /// restart) must not eject.
+    var isSessionEnding: Bool {
+        if Self.currentQuitIsSessionEnd { return true }
+        guard let powerOffDate else { return false }
+        return Date().timeIntervalSince(powerOffDate) < 60
+    }
+
+    /// loginwindow tags its quit Apple event with a reason (logout, restart, shutdown).
+    private static var currentQuitIsSessionEnd: Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent,
+              event.eventClass == kCoreEventClass, event.eventID == kAEQuitApplication
+        else { return false }
+        return event.attributeDescriptor(forKeyword: kAEQuitReason) != nil
+    }
 
     // iokit_common_msg(x) = sys_iokit | sub_iokit_common | x — function-like macros don't import into Swift.
     private static let canSystemSleep: natural_t = 0xE000_0270
@@ -45,7 +67,9 @@ final class PowerMonitor {
         }
         observe(NSWorkspace.screensDidSleepNotification) { await $0.displayDidSleep() }
         observe(NSWorkspace.screensDidWakeNotification) { $0.userDidReturn() }
-        observe(NSWorkspace.willPowerOffNotification) { await $0.sessionWillEnd() }
+        observers.append(center.addObserver(forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.powerOffDate = Date() }
+        })
     }
 
     func stop() {
