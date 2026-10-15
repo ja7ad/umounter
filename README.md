@@ -27,28 +27,3 @@ UMounter lives in your menu bar and ejects everything you have connected with on
 ## Install
 
 Download the latest `UMounter-<version>.dmg` from [Releases](https://github.com/ja7ad/umounter/releases), open it and drag UMounter to Applications.
-
-
-## Screenshots
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/general-dark.png">
-    <img src="docs/img/general-light.png" width="420" alt="General settings">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/what-to-eject-dark.png">
-    <img src="docs/img/what-to-eject-light.png" width="420" alt="What to eject settings">
-  </picture>
-</p>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/options-dark.png">
-    <img src="docs/img/options-light.png" width="420" alt="Options">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/hotkeys-dark.png">
-    <img src="docs/img/hotkeys-light.png" width="420" alt="Hotkeys">
-  </picture>
-</p>
