@@ -702,3 +702,23 @@ private func isolatedDefaults() -> UserDefaults {
         #expect(!reloaded.reduceActivityInLowPowerMode && !reloaded.keepMemoryLow)
     }
 }
+
+// MARK: - Update check
+
+@Suite struct ReleaseVersionTests {
+    @Test func comparesNumerically() throws {
+        let v = { (s: String) in try #require(ReleaseVersion(s)) }
+        #expect(try v("v0.10.0") > v("0.9.9"))
+        #expect(try v("1.2") == v("1.2.0"))
+        #expect(try v("1.3.0-beta.2") < v("1.3.0"))
+        #expect(try v("1.3.0-beta.10") > v("1.3.0-beta.2"))
+        #expect(ReleaseVersion("latest") == nil)
+    }
+
+    @Test func decodesGitHubRelease() throws {
+        let json = #"{"tag_name":"v0.2.0","html_url":"https://github.com/ja7ad/umounter/releases/tag/v0.2.0","draft":false}"#
+        let release = try JSONDecoder().decode(GitHubRelease.self, from: Data(json.utf8))
+        #expect(release.isNewer(than: try #require(ReleaseVersion("0.1.0"))))
+        #expect(!release.isNewer(than: try #require(ReleaseVersion("0.2.0"))))
+    }
+}

@@ -113,8 +113,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(item("Settings…", key: ",") { [model] in model.showSettings() })
         menu.addItem(item("About UMounter") {
             NSApp.activate()
-            NSApp.orderFrontStandardAboutPanel(nil)
+            NSApp.orderFrontStandardAboutPanel(options: [.credits: AboutCredits.text])
         })
+        menu.addItem(item("Check for Updates…") { [model] in model.checkForUpdates() })
         menu.addItem(.separator())
         menu.addItem(item("Quit UMounter", key: "q") { NSApp.terminate(nil) })
     }
@@ -226,4 +227,25 @@ private final class ActionMenuItem: NSMenuItem {
     required init(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     @objc private func run() { handler() }
+}
+
+/// Author and project links shown under the version in the About panel.
+enum AboutCredits {
+    static let repository = URL(string: "https://github.com/ja7ad/umounter")!
+    static let author = URL(string: "https://github.com/ja7ad")!
+
+    static var text: NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let base: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraph,
+        ]
+        let text = NSMutableAttributedString(string: "Made by Javad (", attributes: base)
+        text.append(NSAttributedString(string: "@ja7ad", attributes: base.merging([.link: author]) { $1 }))
+        text.append(NSAttributedString(string: ")\n", attributes: base))
+        text.append(NSAttributedString(string: "github.com/ja7ad/umounter", attributes: base.merging([.link: repository]) { $1 }))
+        return text
+    }
 }

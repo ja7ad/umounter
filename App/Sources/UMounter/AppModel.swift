@@ -22,6 +22,7 @@ final class AppModel {
     private let feedback: Feedback
     private(set) var progressHUD: ProgressHUD?
     let memoryReclaimer = MemoryReclaimer()
+    private let updateChecker = UpdateChecker()
     /// Set by `StatusItemController` while the menu is open.
     var isMenuOpen = false
     private let log = Logger(subsystem: "app.umounter", category: "app")
@@ -84,6 +85,13 @@ final class AppModel {
     /// Opens Settings, building the window on demand.
     /// Logout, restart or shutdown is in progress (see `PowerMonitor`).
     var isSessionEnding: Bool { power.isSessionEnding }
+
+    /// Menu: asks GitHub for a newer release (networking and the alert load
+    /// frameworks, so the reclaimer is re-armed once it is done).
+    func checkForUpdates() {
+        memoryReclaimer.activityStarted()
+        updateChecker.check { [weak self] in self?.memoryReclaimer.activityEnded() }
+    }
 
     func showSettings() {
         memoryReclaimer.activityStarted()
